@@ -97,6 +97,9 @@ MutationGameStateGraph::maxverts = "MaxVertices value of `` was reached, graph i
 MutationGameStateGraph[graph_Graph, init:Except[_Rule], steps_Integer, opts:OptionsPattern[]] :=
   MutationGameStateGraph[graph, init, MaxDepth -> steps, opts];
 
+MutationGameStateGraph::badpoproots = "PopulationRoots in init did not all have dimensions of ``."
+MutationGameStateGraph::badinit = "Unrecognized initial condition."
+
 MutationGameStateGraph[graph_Graph, init:Except[_Rule]:Automatic, OptionsPattern[]] := Scope[
   nbors = VertexNeighborList[IndexGraph[graph]];
   UnpackOptions[modulus, maxVertices, maxDepth, maxEdges];
@@ -114,10 +117,12 @@ MutationGameStateGraph[graph_Graph, init:Except[_Rule]:Automatic, OptionsPattern
       init = Developer`ToList[init];
       zeros = ConstantArray[0, count];
       init = init /. PopulationRoot[r:({__Rule} | _Rule)] :> PopulationRoot[ReplacePart[zeros, r]];
-      If[!MatchQ[init, {Repeated @ PopulationRoot[l:{__Integer} /; Length[l] === count]}],
+      If[!MatchQ[init, {Repeated @ PopulationRoot[{Repeated[_Integer, count]}]}],
+        Message[MutationGameStateGraph::badpoproots, count];
         Return[$Failed]];
     ,
     True,
+      Message[MutationGameStateGraph::badinit];
       Return[$Failed]
   ];
   result = ExploreGraph[succs, init, MaxVertices -> maxVertices, MaxDepth -> maxDepth, MaxEdges -> maxEdges, DirectedEdges -> False,
@@ -128,7 +133,7 @@ MutationGameStateGraph[graph_Graph, init:Except[_Rule]:Automatic, OptionsPattern
 
 formatGraph[e_] := Graph[e,
   EdgeShapeFunction -> Function[Line[#1]], VertexShapeFunction -> Function[Tooltip[Point[#], #2]],
-  VertexStyle -> Directive[GrayLevel[0, .4], AbsolutePointSize[5]],
+  VertexStyle -> Directive[GrayLevel[0, .4], AbsolutePointSize[3]],
   EdgeStyle -> Directive[Thickness[Medium], GrayLevel[0,.2]]
 ];
 
@@ -147,18 +152,31 @@ Options[PopulationRootGallery] = {
   MaxDepth -> 4, MaxVertices -> 500, Modulus -> None
 }
 
-PopulationRootGallery[graph_, maxPop_Integer, opts:OptionsPattern[]] := Scope[
-  inits = PopulationRoot /@ Tuples[Range[-maxPop, maxPop], VertexCount[graph]];
+PopulationRootGallery[mutationGraph_Graph, maxPop_Integer, opts:OptionsPattern[]] := Scope[
+  inits = PopulationRoot /@ Tuples[Range[-maxPop, maxPop], VertexCount[mutationGraph]];
   UnpackOptions[maxDepth, maxVertices];
   gameOpts = Sequence[MaxDepth -> maxDepth, MaxVertices -> maxVertices];
-  stateGraphs = {}; allSeenVertices = <||>;
+  stateGraphs = {}; vertexIndex = <||>;
   Do[
-    If[Lookup[allSeenVertices, init, False], Continue[]];
-    stateGraph = Quiet @ MutationGameStateGraph[graph, init, gameOpts];
-    AppendTo[allSeenVertices, Thread[VertexList[stateGraph] -> True]];
-    AppendTo[stateGraphs, stateGraph];
+    newStateGraph = Quiet @ MutationGameStateGraph[mutationGraph, init, gameOpts];
+    newVertexList = VertexList[newStateGraph];
+    overlappingGraphIndices = DeleteDuplicates @ DeleteMissing @ Lookup[vertexIndex, newVertexList];
+    If[overlappingGraphIndices =!= {},
+      previousGraphs = Part[stateGraphs, overlappingGraphIndices];
+      Part[stateGraphs, overlappingGraphIndices] = None;
+      (*
+      sharedVertices = Union @@ (Intersection[newVertexList, VertexList[#]]& /@ previousGraphs);
+      overlapGraph = MutationGameStateGraph[mutationGraph, sharedVertices, MaxDepth -> 1, MaxVertices -> maxVertices];
+      newStateGraph = GraphUnion @@ Join[previousGraphs, {newStateGraph, overlapGraph}];
+      *)
+      newStateGraph = formatGraph[GraphUnion @@ Append[previousGraphs, newStateGraph]];
+    ];
+    If[!GraphQ[newStateGraph], Return[$Failed]];
+    AppendTo[stateGraphs, newStateGraph];
+    AppendTo[vertexIndex, Thread[VertexList[newStateGraph] -> Length[stateGraphs]]];
   ,
     {init, inits}
   ];
+  stateGraphs = DeleteNone[stateGraphs];
   DeleteDuplicates[stateGraphs, IsomorphicGraphQ]
 ]

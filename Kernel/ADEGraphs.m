@@ -139,3 +139,26 @@ VertexContractBy[graph_Graph, func_] :=
   VertexContract[graph, GatherBy[VertexList[graph], func]]
 
 
+PackageExport["PopulationRootGallery"]
+
+Clear[PopulationRootGallery];
+
+Options[PopulationRootGallery] = {
+  MaxDepth -> 4, MaxVertices -> 500, Modulus -> None
+}
+
+PopulationRootGallery[graph_, maxPop_Integer, opts:OptionsPattern[]] := Scope[
+  inits = PopulationRoot /@ Tuples[Range[-maxPop, maxPop], VertexCount[graph]];
+  UnpackOptions[maxDepth, maxVertices];
+  gameOpts = Sequence[MaxDepth -> maxDepth, MaxVertices -> maxVertices];
+  stateGraphs = {}; allSeenVertices = <||>;
+  Do[
+    If[Lookup[allSeenVertices, init, False], Continue[]];
+    stateGraph = Quiet @ MutationGameStateGraph[graph, init, gameOpts];
+    AppendTo[allSeenVertices, Thread[VertexList[stateGraph] -> True]];
+    AppendTo[stateGraphs, stateGraph];
+  ,
+    {init, inits}
+  ];
+  DeleteDuplicates[stateGraphs, IsomorphicGraphQ]
+]

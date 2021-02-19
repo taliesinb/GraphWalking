@@ -219,7 +219,7 @@ ExploreGraph[f_, initialVertices_, opts:OptionsPattern[]] := Scope[
   Which[
     terminationReasonFunction === None, None,
     seenVertices["Length"] > maxVertices, terminationReasonFunction["MaxVerticesReached"],
-    edgeCount > maxEdges, terminationReasonFunction["MaxEdgessReached"],
+    edgeCount > maxEdges, terminationReasonFunction["MaxEdgesReached"],
     generation > maxDepth, terminationReasonFunction["MaxDepthReached"],
     True, Null
   ];

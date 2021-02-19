@@ -87,14 +87,19 @@ VertexNeighborList[graph_Graph] := Scope[
 
 Options[MutationGameStateGraph] = {
   Modulus -> None,
-  MaxVertices -> 1000
+  MaxVertices -> 1000,
+  MaxDepth -> Infinity,
+  MaxEdges -> Infinity
 };
 
 MutationGameStateGraph::maxverts = "MaxVertices value of `` was reached, graph is not complete."
 
-MutationGameStateGraph[graph_Graph, n:Except[_Rule]:Infinity, init:Except[_Rule]:Automatic, OptionsPattern[]] := Scope[
+MutationGameStateGraph[graph_Graph, init:Except[_Rule], steps_Integer, opts:OptionsPattern[]] :=
+  MutationGameStateGraph[graph, init, MaxDepth -> steps, opts];
+
+MutationGameStateGraph[graph_Graph, init:Except[_Rule]:Automatic, OptionsPattern[]] := Scope[
   nbors = VertexNeighborList[IndexGraph[graph]];
-  UnpackOptions[modulus, maxVertices];
+  UnpackOptions[modulus, maxVertices, maxDepth, maxEdges];
   succs = mutationSuccessors[nbors, toModulusFunction @ modulus];
   count = VertexCount[graph]; vertices = VertexList[graph];
   Which[
@@ -115,7 +120,7 @@ MutationGameStateGraph[graph_Graph, n:Except[_Rule]:Infinity, init:Except[_Rule]
     True,
       Return[$Failed]
   ];
-  result = ExploreGraph[succs, init, MaxVertices -> maxVertices, MaxDepth -> n, DirectedEdges -> False,
+  result = ExploreGraph[succs, init, MaxVertices -> maxVertices, MaxDepth -> maxDepth, MaxEdges -> maxEdges, DirectedEdges -> False,
     "TerminationReasonFunction" -> Function[If[# === "MaxVerticesReached", Message[MutationGameStateGraph::maxverts, maxVertices]]]
   ];
   formatGraph @ SimpleGraph @ result

@@ -281,3 +281,11 @@ GraphVertexAssignments[graph_, values_] := Scope[
   group = GraphAutomorphismGroup[graph];
   DeleteDuplicates[perms, MemberQ[Permute[#2, group], #1]&]
 ]
+
+GraphVertexTuples[graph_, values_] := Scope[
+  n = VertexCount[graph];
+  values = PadRight[values, n];
+  perms = Permutations[values];
+  group = GraphAutomorphismGroup[graph];
+  DeleteDuplicates[perms, MemberQ[Permute[#2, group], #1]&]
+]

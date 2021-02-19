@@ -52,9 +52,8 @@ $ETildeGraphs = {$E6Tilde, $E7Tilde, $E8Tilde};
 
 
 
+Clear[MutationGameStateGraph];
 PackageExport["MutationGameStateGraph"]
-
-
 PackageExport["PopulationRoot"]
 
 fmtNum[i_Integer] := If[Negative[i], OverBar[Abs[i]], i];
@@ -66,25 +65,72 @@ mutate[population_, i_, neighbors_] :=
 
 ms_mutationSuccessors[PopulationRoot[population_]] := PopulationRoot /@ ms[population]
 
-mutationSuccessors[neighborList_List][population_List] :=
-  Table[mutate[population, i, neighborList[[i]]], {i, Length[population]}]
+toModulusFunction = MatchValues[
+  None|Infinity := Identity;
+  n_Integer := Function[Mod[#, n]];
+  n:{(_Integer|Infinity|None)..} := ReplaceAll[Function[Mod[#, n]], None -> Infinity];
+];
 
-graphToNeighborList[graph_] := VertexOutComponent[graph, #, {1}]& /@ VertexList[graph];
+mutationSuccessors[neighborList_List, modFunc_][population_List] :=
+  Table[modFunc @ mutate[population, i, neighborList[[i]]], {i, Length[population]}]
 
-MutationGameStateGraph[graph_Graph, n_, offset_:0] := Scope[
-  nbors = graphToNeighborList[IndexGraph[graph]];
-  succs = mutationSuccessors[nbors];
+PackageExport["VertexNeighborList"]
+
+repeat[i_, 1] := i;
+repeat[i_, n_] := Splice[ConstantArray[i, n]];
+VertexNeighborList[graph_Graph] := Scope[
+  verts = VertexList[graph];
+  Function[row,
+    repeat[Part[verts, First @ #], #2]& @@@ Most[ArrayRules @ row]
+  ] /@ AdjacencyMatrix[graph]
+];
+
+Options[MutationGameStateGraph] = {
+  Modulus -> None,
+  MaxVertices -> 1000
+};
+
+MutationGameStateGraph::maxverts = "MaxVertices value of `` was reached, graph is not complete."
+
+MutationGameStateGraph[graph_Graph, n:Except[_Rule]:Infinity, init:Except[_Rule]:Automatic, OptionsPattern[]] := Scope[
+  nbors = VertexNeighborList[IndexGraph[graph]];
+  UnpackOptions[modulus, maxVertices];
+  succs = mutationSuccessors[nbors, toModulusFunction @ modulus];
   count = VertexCount[graph]; vertices = VertexList[graph];
-  id = IdentityMatrix[count] + offset;
-  init = PopulationRoot /@ Join[id, -id];
-  formatGraph @ SimpleGraph @ ExploreGraph[succs, init, "MaxDepth" -> n, DirectedEdges -> False]
+  Which[
+    NumberQ[init] || init === Automatic,
+      id = IdentityMatrix[count] + Replace[init, Automatic -> 0];
+      init = PopulationRoot /@ Join[id, -id],
+    VectorQ[init, IntegerQ] && Length[init] === count,
+      init = {PopulationRoot[init]},
+    MatrixQ[init, IntegerQ] && Length[First[init]] === count,
+      init = PopulationRoot /@ init,
+    MatchQ[init, {__PopulationRoot} | _PopulationRoot],
+      init = Developer`ToList[init];
+      zeros = ConstantArray[0, count];
+      init = init /. PopulationRoot[r:({__Rule} | _Rule)] :> PopulationRoot[ReplacePart[zeros, r]];
+      If[!MatchQ[init, {Repeated @ PopulationRoot[l:{__Integer} /; Length[l] === count]}],
+        Return[$Failed]];
+    ,
+    True,
+      Return[$Failed]
+  ];
+  result = ExploreGraph[succs, init, MaxVertices -> maxVertices, MaxDepth -> n, DirectedEdges -> False,
+    "TerminationReasonFunction" -> Function[If[# === "MaxVerticesReached", Message[MutationGameStateGraph::maxverts, maxVertices]]]
+  ];
+  formatGraph @ SimpleGraph @ result
 ];
 
 formatGraph[e_] := Graph[e,
-  EdgeShapeFunction -> Function[Line[#1]], VertexShapeFunction -> Function[Point[#]],
+  EdgeShapeFunction -> Function[Line[#1]], VertexShapeFunction -> Function[Tooltip[Point[#], #2]],
   VertexStyle -> Directive[GrayLevel[0, .4], AbsolutePointSize[5]],
   EdgeStyle -> Directive[Thickness[Medium], GrayLevel[0,.2]]
 ];
 
+
+PackageExport["VertexContractBy"]
+
+VertexContractBy[graph_Graph, func_] :=
+  VertexContract[graph, GatherBy[VertexList[graph], func]]
 
 

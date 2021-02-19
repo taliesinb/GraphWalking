@@ -175,9 +175,18 @@ Clique[vertices___] := Splice[UndirectedEdge @@@ Subsets[{vertices}, {2}]];
 
 
 PackageExport["ExploreGraph"]
+PackageExport["MaxVertices"]
+PackageExport["MaxEdges"]
+PackageExport["MaxDepth"]
+
+Clear[ExploreGraph];
+
+MaxVertices::usage = "MaxVertices is an option for ExploreGraph."
+MaxEdges::usage = "MaxEdges is an option for ExploreGraph."
+MaxDepth::usage = "MaxDepth is an option for ExploreGraph."
 
 Options[ExploreGraph] = Join[
-  {"MaxVertices" -> Infinity, "MaxEdges" -> Infinity, "MaxDepth" -> Infinity, DirectedEdges -> True},
+  {MaxVertices -> Infinity, MaxEdges -> Infinity, MaxDepth -> Infinity, DirectedEdges -> True, "TerminationReasonFunction" -> None},
   DeleteCases[Options[Graph], DirectedEdges -> _]
 ];
 
@@ -186,14 +195,13 @@ stackPushList[stack_, list_] := Scan[item |-> stack["Push", item], list];
 ExploreGraph[f_, initialVertices_, opts:OptionsPattern[]] := Scope[
   thisGenVertices = CreateDataStructure["Stack"];
   nextGenVertices = CreateDataStructure["Stack"];
-  visitedVertices = CreateDataStructure["HashSet"];
   seenVertices = CreateDataStructure["HashSet"];
   thisGenSuccessors = <||>; allSuccessors = {};
-  UnpackOptions[maxVertices, maxEdges, maxDepth, directedEdges];
+  UnpackOptions[maxVertices, maxEdges, maxDepth, directedEdges, terminationReasonFunction];
   stackPushList[thisGenVertices, initialVertices];
   seenVertices["Union", initialVertices];
   edgeGenerations = {}; edgeCount = 0; generation = 0;
-  While[And[visitedVertices["Length"] <= maxVertices, edgeCount <= maxEdges, generation <= maxDepth],
+  While[And[seenVertices["Length"] <= maxVertices, edgeCount <= maxEdges, generation <= maxDepth],
     If[thisGenVertices["EmptyQ"],
       generation += 1;
       AppendTo[allSuccessors, thisGenSuccessors]; thisGenSuccessors = <||>;
@@ -208,6 +216,13 @@ ExploreGraph[f_, initialVertices_, opts:OptionsPattern[]] := Scope[
     seenVertices["Union", successors];
     stackPushList[nextGenVertices, successors];
   ];
+  Which[
+    terminationReasonFunction === None, None,
+    seenVertices["Length"] > maxVertices, terminationReasonFunction["MaxVerticesReached"],
+    edgeCount > maxEdges, terminationReasonFunction["MaxEdgessReached"],
+    generation > maxDepth, terminationReasonFunction["MaxDepthReached"],
+    True, Null
+  ];
   edgeSymbol = If[directedEdges, DirectedEdge, UndirectedEdge];
   result = Flatten @ Map[succ |-> KeyValueMap[{from, to} |-> Map[edgeSymbol[from, #]&, to], succ], allSuccessors];
   If[undirectedEdges, result = DeleteDuplicatesBy[result, Sort]];
@@ -215,9 +230,20 @@ ExploreGraph[f_, initialVertices_, opts:OptionsPattern[]] := Scope[
 ];
 
 
+PackageExport["VertexLabelForm"]
 PackageExport["ShowLabels"]
 
-ShowLabels[e_] := Graph[e, VertexLabels -> "Name"];
+ShowLabels[e_] := VertexLabelForm[e];
+VertexLabelForm[e_] := e /. (g_Graph ? GraphQ) :> RuleCondition @ Graph[g, VertexLabels -> "Name"];
+
+
+PackageExport["VertexLabelForm"]
+
+VertexTooltipForm[e_] := e /. (g_Graph ? GraphQ) :> RuleCondition @ Graph[g, VertexLabels -> "Name"];
+
+PackageExport["VertexTooltipForm"]
+
+VertexTooltipForm[e_] := e /. (g_Graph ? GraphQ) :> RuleCondition @ Graph[g, VertexLabels -> Placed["Name", Tooltip]];
 
 
 PackageExport["GraphComponentPlot"]
